@@ -1,0 +1,34 @@
+27/01/2026 23:23:42 - INFO - --- Iniciando Processamento ---
+27/01/2026 23:23:42 - INFO - Verificando e-mails de: Selbetti
+27/01/2026 23:23:43 - INFO - Processando e-mail: RES: [E-mail externo] :RE: Faturamento Selbetti - Dezembro/2025 - Fleury
+27/01/2026 23:23:44 - INFO - Processando e-mail: [E-mail externo] :RE: Faturamento Selbetti - Dezembro/2025 - Fleury
+27/01/2026 23:23:44 - INFO - Processando e-mail: RES: Faturamento Selbetti - Dezembro/2025 - Fleury
+27/01/2026 23:24:10 - INFO - Verificando e-mails de: Daycoval
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:11 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - Fleury - Vencimento 23/01 
+27/01/2026 23:24:12 - INFO - Processando e-mail: RES: Faturamento Banco Daycoval - CPC - Vencimento 23/01 
+27/01/2026 23:24:33 - INFO - Verificando e-mails de: Positivo
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 015814-G_015815-G_015820-G_015821-G_015822-G_015831-G_015976-G_015795-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 015773-G_015776-G_015777-G_015779-G_015780-G_015781-G_015782-G_015783-G_015790-G_015791-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 012747-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 015758-G_015759-G_015760-G_015761-G_015762-G_015766-G_015767-G_015768-G_015769-G_015770-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 015593-G_015594-G_015747-G_015748-G_015749-G_015750-G_015753-G_015754-G_015756-G_015757-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 012748-G_012916-G_012920-G_012928-G_015832-G_015345-G_015348-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - 012501-G_000744-G_000748-G_000749-G_000751-G
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - CPMA
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - Santecorp
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - IRN
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - Bioclinico
+27/01/2026 23:24:34 - INFO - Processando e-mail: RES: Faturamento Positivo - Pretti

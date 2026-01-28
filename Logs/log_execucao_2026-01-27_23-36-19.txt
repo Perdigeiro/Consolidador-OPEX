@@ -1,0 +1,8 @@
+27/01/2026 23:36:19 - INFO - --- Iniciando Processamento ---
+27/01/2026 23:36:19 - INFO - Backup de segurança criado: Backup_2026-01-27_23-36-19_Relatorios_OPEX.xlsx
+27/01/2026 23:36:19 - INFO - Verificando e-mails de: Selbetti
+27/01/2026 23:36:42 - INFO - Nenhum dado novo para Selbetti.
+27/01/2026 23:36:42 - INFO - Verificando e-mails de: Daycoval
+27/01/2026 23:37:08 - INFO - Nenhum dado novo para Daycoval.
+27/01/2026 23:37:08 - INFO - Verificando e-mails de: Positivo
+27/01/2026 23:37:38 - INFO - Nenhum dado novo para Positivo.
