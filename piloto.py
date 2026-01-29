@@ -14,6 +14,7 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl import Workbook
 
 # Suprimir avisos
 warnings.filterwarnings('ignore')
@@ -48,7 +49,6 @@ logging.basicConfig(
 # --- LISTA NEGRA DE REMETENTES ---
 REMETENTES_IGNORAR = [
     "gleiciane.fragoso@grupofleury.com.br",
-    "matheus.augusto@grupofleury.com.br",
 ]
 
 # Mapa de Meses
@@ -71,37 +71,32 @@ MAPA_MESES_INFO = {
 COLUNAS_PADRAO = [
     'Mes_Referencia', 'Data_Email', 'Remetente', 
     'Assunto_Email', 'Categoria_OPEX', 'Data_Processamento'
-]
+] 
 
 # --- CONFIGURAÇÃO DOS FORNECEDORES ---
-CONFIG_FORNECEDORES = {
-    "Selbetti": {
-        "assuntos_possiveis": ["RE: Faturamento Selbetti", "[E-mail externo] :RE: Faturamento Selbetti", "Faturamento Selbetti", "Relatório Selbetti"],
-        "nome_aba": "Selbetti",
-        "classificacao_opex": "Impressoras/Impressão",
-        "colunas_renomear": {
-            "Valor": "Valor", 
-            "Vlr. Total": "Valor"
-        }
+CONFIG_PADRAO = [
+    {
+        "Fornecedor": "Selbetti",
+        "Palavras_Chave": "Faturamento Selbetti, Relatório Selbetti, RE: Faturamento Selbetti",
+        "Nome_Aba": "Selbetti",
+        "Categoria_OPEX": "Impressoras/Impressão"
     },
-    "Daycoval": {
-        "assuntos_possiveis": ["RES: Faturamento Banco Daycoval", "RES: Faturamento Banco Daycoval - Fleury", "Faturamento Banco Daycoval", "Relatório Daycoval"],
-        "nome_aba": "Daycoval",
-        "classificacao_opex": "DAYCOVAL LEASING TI",
-        "colunas_renomear": {
-            "Realizado Mensal": "Valor",
-            "Total Fatura": "Valor"
-        }
+    {
+        "Fornecedor": "Daycoval",
+        "Palavras_Chave": "Faturamento Banco Daycoval, Relatório Daycoval",
+        "Nome_Aba": "Daycoval",
+        "Categoria_OPEX": "DAYCOVAL LEASING TI"
     },
-    "Positivo": {
-        "assuntos_possiveis": ["Faturamento Positivo"],
-        "nome_aba": "Positivo",
-        "classificacao_opex": "POSITIVO LEASING TI",
-        "colunas_renomear": {}
+    {
+        "Fornecedor": "Positivo",
+        "Palavras_Chave": "Faturamento Positivo, Locação",
+        "Nome_Aba": "Positivo",
+        "Categoria_OPEX": "POSITIVO LEASING TI"
     }
-}
+]
 
 # --- FUNÇÕES AUXILIARES ---
+                                                                 
 
 def is_file_open(path):
     if not path.exists(): return False
@@ -430,6 +425,207 @@ def realizar_backup_seguranca():
         print(f"ERRO AO FAZER BACKUP: {e}")
         logging.error(f"Falha no backup: {e}")    
 
+def inicializar_aba_config():
+    """
+    Verifica se a aba 'config_fornecedor' existe. 
+    Se não existir, cria ela, coloca o cabeçalho e os dados padrão.
+    """
+    try:
+        wb = None
+        salvar_necessario = False
+        NOME_ABA_CONFIG = "config_fornecedor" # <--- MUDAMOS O NOME AQUI
+
+        # 1. Abre ou Cria o Arquivo
+        if not ARQUIVO_FINAL.exists():
+            print(f"--- CRIANDO ARQUIVO NOVO EM: {ARQUIVO_FINAL} ---")
+            wb = Workbook() 
+            if 'Sheet' in wb.sheetnames: del wb['Sheet']
+            salvar_necessario = True
+        else:
+            wb = load_workbook(ARQUIVO_FINAL)
+
+        # 2. Verifica/Cria a aba específica
+        if NOME_ABA_CONFIG not in wb.sheetnames:
+            print(f"Criando aba '{NOME_ABA_CONFIG}'...")
+            ws = wb.create_sheet(NOME_ABA_CONFIG, 0) # Cria na primeira posição
+
+            # --- ESCREVE O CABEÇALHO ---
+            cabecalho = ["Fornecedor", "Palavras_Chave", "Nome_Aba", "Categoria_OPEX"]
+            ws.append(cabecalho)
+
+            # --- PREENCHE DADOS PADRÃO ---
+            # Garante que CONFIG_PADRAO seja tratado como lista
+            dados = CONFIG_PADRAO
+            if isinstance(CONFIG_PADRAO, dict): dados = list(CONFIG_PADRAO.values())
+
+            for item in dados:
+                if isinstance(item, dict):
+                    ws.append([
+                        item.get("Fornecedor", ""),
+                        item.get("Palavras_Chave", ""),
+                        item.get("Nome_Aba", ""),
+                        item.get("Categoria_OPEX", "")
+                    ])
+
+            # --- FORMATAÇÃO (Para não confundir o usuário) ---
+            # Pinta o cabeçalho de Preto com letra Branca
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
+                cell.alignment = Alignment(horizontal='center')
+            
+            # Ajusta largura das colunas para ficar legível
+            ws.column_dimensions['A'].width = 15 # Fornecedor
+            ws.column_dimensions['B'].width = 40 # Palavras Chave
+            ws.column_dimensions['C'].width = 15 # Nome Aba
+            ws.column_dimensions['D'].width = 25 # Categoria
+            
+            salvar_necessario = True
+
+        if salvar_necessario:
+            wb.save(ARQUIVO_FINAL)
+            print(f" -> ARQUIVO SALVO COM ABA '{NOME_ABA_CONFIG}'.")
+        
+        wb.close()
+        
+    except Exception as e:
+        if "Permission denied" in str(e):
+            print("ERRO CRÍTICO: O Excel está aberto. Feche-o para criar a configuração.")
+        logging.error(f"Erro ao inicializar aba config: {e}")
+
+def carregar_configuracoes_do_excel():
+    """Lê a aba 'config_fornecedor' e transforma no dicionário."""
+    
+    inicializar_aba_config()
+    
+    config_dict = {} 
+    NOME_ABA_CONFIG = "config_fornecedor" # <--- MUDAMOS O NOME AQUI TAMBÉM
+
+    try:
+        if not ARQUIVO_FINAL.exists():
+             raise Exception("Arquivo não encontrado.")
+
+        # Lê a aba correta
+        df_config = pd.read_excel(ARQUIVO_FINAL, sheet_name=NOME_ABA_CONFIG)
+        df_config = df_config.dropna(how='all') 
+
+        for _, row in df_config.iterrows():
+            fornecedor = str(row["Fornecedor"])
+            if fornecedor == 'nan': continue
+
+            palavras = str(row["Palavras_Chave"]).split(',')
+            palavras_limpas = [p.strip() for p in palavras if p.strip()]
+            
+            config_dict[fornecedor] = {
+                "assuntos_possiveis": palavras_limpas,
+                "nome_aba": str(row["Nome_Aba"]),
+                "classificacao_opex": str(row["Categoria_OPEX"]),
+                "colunas_renomear": {}
+            }
+        
+        print(f" -> Configuração carregada: {len(config_dict)} fornecedores.")
+        return config_dict
+
+    except Exception as e:
+        logging.error(f"Erro lendo Excel ({e}). Usando padrão de memória.")
+        print(f"Aviso: Usando padrão de memória (Erro: {e})")
+        
+        # Fallback
+        fallback_dict = {}
+        dados = CONFIG_PADRAO
+        if isinstance(CONFIG_PADRAO, dict): dados = list(CONFIG_PADRAO.values())
+
+        for item in dados:
+            if isinstance(item, dict):
+                fallback_dict[item["Fornecedor"]] = {
+                    "assuntos_possiveis": item["Palavras_Chave"].split(','),
+                    "nome_aba": item["Nome_Aba"],
+                    "classificacao_opex": item["Categoria_OPEX"],
+                    "colunas_renomear": {}
+                }
+        return fallback_dict
+
+def enviar_email_resumo(resumo_dados):
+    """
+    Gera o e-mail e MOSTRA NA TELA (.Display) para conferência.
+    """
+
+    if not resumo_dados:
+        print(" -> Nada processado. E-mail de resumo não será gerado.")
+        logging.info("Nada processado. E-mail ignorado.")
+        return
+    
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        mail = outlook.CreateItem(0)
+
+        # SEU E-MAIL AQUI
+        mail.To = "matheus.augusto@grupofleury.com.br; lucas.rosa@grupofleury.com.br"
+        mail.CC = "gustavo.guanas@grupofleury.com.br; jeferson.costa@grupofleury.com.br"
+
+        data_hoje = datetime.now().strftime('%d/%m/%Y')
+        mail.Subject = f"Resumo Processamento OPEX - {data_hoje}"
+
+        #--- MONTAGEM DO HTML ---
+        html = f"""
+        <html>
+        <body style="font-family: Calibri, sans-serif;">
+            <h2 style="color: #2F75B5;">Processamento Finalizado com Sucesso</h2>
+            <p>O robô Sentinela OPEX finalizou a execução de hoje ({data_hoje}).</p>
+            
+            <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+                <tr style="background-color: #f2f2f2;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Fornecedor</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qtd E-mails</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Valor Total</th>
+                </tr>
+        """
+
+        total_geral_valor = 0
+        total_geral_qtd = 0
+
+        for forn, dados in resumo_dados.items():
+            qtd = dados.get('qtd', 0)
+            valor = dados.get('valor', 0.0)
+            total_geral_valor += valor
+            total_geral_qtd += qtd
+
+            valor_fmt = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            html += f"""
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{forn}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{qtd}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{valor_fmt}</td>
+                </tr>
+            """
+
+        total_fmt = f"R$ {total_geral_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        html += f"""
+                <tr style="font-weight: bold; background-color: #e6f3ff;">
+                    <td style="border: 1px solid #ddd; padding: 8px;">TOTAL GERAL</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{total_geral_qtd}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">{total_fmt}</td>
+                </tr>
+            </table>
+            <br>
+            <p style="font-size: 11px; color: #888;">Este e-mail foi gerado automaticamente pelo Robô Sentinela OPEX.</p>
+        </body>
+        </html>
+        """
+
+        mail.HTMLBody = html
+        
+        # --- MUDANÇA CRUCIAL AQUI ---
+        # mail.Send()  <-- Comentado para evitar bloqueio silencioso
+        mail.Display() # <-- VAI ABRIR A JANELA DO E-MAIL NA SUA TELA
+        
+        print("\n -> JANELA DE E-MAIL ABERTA! VERIFIQUE E CLIQUE EM ENVIAR.")
+        logging.info("Janela de e-mail de resumo aberta.")
+
+    except Exception as e:
+        print(f"Erro ao gerar e-mail de resumo: {e}")
+        logging.error(f"Erro no e-mail: {e}")
 
 def executar_pipeline():
     print("\n--- INICIANDO PROCESSAMENTO OPEX ---")
@@ -443,12 +639,39 @@ def executar_pipeline():
     print("\n--- INICIANDO BACKUP DE SEGURANÇA ---")
     realizar_backup_seguranca()
 
+    # --- Variável para guardar os dados do resumo ---
+    stats_geral = {} 
+    # -----------------------------------------------------
+
     try:
         outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
         inbox = outlook.GetDefaultFolder(6)
         msgs_para_mover_com_destino = []
 
-        for fornecedor, config in CONFIG_FORNECEDORES.items():
+        print(" -> Carregando configurações...")
+        config_atual = carregar_configuracoes_do_excel()
+
+        # Proteção extra caso venha como lista
+        if isinstance(config_atual, list):
+            logging.warning("Configuração veio como lista. Convertendo...")
+            novo_dict = {}
+            for item in config_atual:
+                if isinstance(item, dict) and "Fornecedor" in item: 
+                     palavras = item.get("Palavras_Chave", "")
+                     lista_palavras = palavras.split(',') if isinstance(palavras, str) else []
+                     novo_dict[item["Fornecedor"]] = {
+                        "assuntos_possiveis": lista_palavras,
+                        "nome_aba": item.get("Nome_Aba", ""),
+                        "classificacao_opex": item.get("Categoria_OPEX", ""),
+                        "colunas_renomear": {}
+                      }
+            config_atual = novo_dict
+
+        if not config_atual:
+            print("ERRO: Nenhuma configuração carregada.")
+            return
+
+        for fornecedor, config in config_atual.items():
             print(f"\nVerificando fornecedor: {fornecedor}")
             logging.info(f"Verificando e-mails de: {fornecedor}")
             mensagens = inbox.Items
@@ -465,10 +688,13 @@ def executar_pipeline():
 
                     assunto_msg = msg.Subject.lower()
                     if not any(alvo in assunto_msg for alvo in assuntos_alvo): continue 
+                    
                     remetente_email = obter_email_remetente(msg)
-                    if remetente_email in REMETENTES_IGNORAR: 
-                        print(f" -> Ignorado: Remetente bloqueado ({remetente_email})")
-                        continue
+                    # --- ATENÇÃO: COMENTE A LINHA ABAIXO PARA TESTAR COM SEU E-MAIL ---
+                    # if remetente_email in REMETENTES_IGNORAR: 
+                    #     print(f" -> Ignorado: Remetente bloqueado ({remetente_email})")
+                    #     continue
+                    # ------------------------------------------------------------------
 
                     print(f" -> PROCESSANDO: {msg.Subject}")
                     logging.info(f"Processando e-mail: {msg.Subject}")
@@ -524,6 +750,17 @@ def executar_pipeline():
             if dfs_novos:
                 full_new_data = pd.concat(dfs_novos)
                 salvar_com_append_preservando_formatacao(full_new_data, ARQUIVO_FINAL, config['nome_aba'])
+                
+                # --- COLETA DADOS PARA O E-MAIL ---
+                qtd = len(dfs_novos)
+                soma_valor = 0.0
+                for col in full_new_data.columns:
+                    if eh_coluna_financeira(col):
+                        soma_valor = full_new_data[col].sum()
+                        break
+                
+                stats_geral[fornecedor] = {'qtd': qtd, 'valor': soma_valor}
+                # ----------------------------------------
             else:
                 logging.info(f"Nenhum dado novo para {fornecedor}.")
 
@@ -541,6 +778,11 @@ def executar_pipeline():
                 msg.Move(pasta_final)
             except Exception as e: logging.error(f"Erro ao mover email: {e}")
         
+        # --- DISPARA O E-MAIL NO FINAL ---
+        print("\nGerando relatório e enviando e-mail...")
+        enviar_email_resumo(stats_geral)
+        # ---------------------------------------
+
         print("\n--- PROCESSO CONCLUÍDO COM SUCESSO ---")
 
     except Exception as e:
