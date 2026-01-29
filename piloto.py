@@ -1,6 +1,7 @@
 import win32com.client
 import pandas as pd
 import shutil
+import pdfplumber
 from pathlib import Path
 from io import StringIO
 import logging
@@ -11,6 +12,7 @@ import warnings
 import os
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -18,7 +20,7 @@ from openpyxl import Workbook
 
 # Suprimir avisos
 warnings.filterwarnings('ignore')
-
+2
 # --- 1. CONFIGURAÇÕES GERAIS ---
 CAMINHO_PASTA_LOCAL = Path(r"C:\Users\matheus.augusto\OneDrive - Grupo Fleury\Planejamento Financeiro - TI&Telecom _ - Documentos\RELATÓRIO\Automações\Gerar Relatório OPEX")
 
@@ -79,24 +81,154 @@ CONFIG_PADRAO = [
         "Fornecedor": "Selbetti",
         "Palavras_Chave": "Faturamento Selbetti, Relatório Selbetti, RE: Faturamento Selbetti",
         "Nome_Aba": "Selbetti",
-        "Categoria_OPEX": "Impressoras/Impressão"
+        "Categoria_OPEX": "Impressoras/Impressão",
+        "Tipo_leitura": "Corpo"
     },
     {
         "Fornecedor": "Daycoval",
         "Palavras_Chave": "Faturamento Banco Daycoval, Relatório Daycoval",
         "Nome_Aba": "Daycoval",
-        "Categoria_OPEX": "DAYCOVAL LEASING TI"
+        "Categoria_OPEX": "DAYCOVAL LEASING TI",
+        "Tipo_leitura": "Corpo"
     },
     {
         "Fornecedor": "Positivo",
         "Palavras_Chave": "Faturamento Positivo, Locação",
         "Nome_Aba": "Positivo",
-        "Categoria_OPEX": "POSITIVO LEASING TI"
+        "Categoria_OPEX": "POSITIVO LEASING TI",
+        "Tipo_leitura": "Corpo"
+    },
+        {
+        "Fornecedor": "PDF",
+        "Palavras_Chave": "PDF",
+        "Nome_Aba": "PDF",
+        "Categoria_OPEX": "PDF LEASING TI",
+        "Tipo_leitura": "PDF"
+    },    {
+        "Fornecedor": "Ambos",
+        "Palavras_Chave": "Ambos",
+        "Nome_Aba": "Ambos",
+        "Categoria_OPEX": "Ambos LEASING TI",
+        "Tipo_leitura": "Ambos"
+    }, {
+        "Fornecedor": "TESTE",
+        "Palavras_Chave": "TESTE, TESTE1, TESTE",
+        "Nome_Aba": "TESTE",
+        "Categoria_OPEX": "TESTE LEASING TI",
+        "Tipo_leitura": "Corpo"
+    }, {
+        "Fornecedor": "NOVA",
+        "Palavras_Chave": "NOVA",
+        "Nome_Aba": "NOVA",
+        "Categoria_OPEX": "NOVA LEASING TI",
+        "Tipo_leitura": "Corpo"
     }
 ]
 
 # --- FUNÇÕES AUXILIARES ---
-                                                                 
+
+def aplicar_estilo_visual(ws, sheet_name):
+    """
+    Aplica formatação visual e corrige a definição da Tabela Oficial para evitar corrupção.
+    """
+    max_col = ws.max_column
+    max_row = ws.max_row
+    letra_ultima_coluna = get_column_letter(max_col)
+    
+    # --- DEFINIÇÃO DE CORES ---
+    # Azul Escuro: Colunas Geradas pelo Robô (Metadados)
+    fill_meta = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") 
+    # Laranja: Colunas Extraídas do E-mail/PDF (Dados Originais)
+    fill_dados = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
+    
+    font_branca = Font(name="Calibri", size=11, color="FFFFFF", bold=True)
+    
+    # Lista das colunas que o robô cria (Metadados)
+    cols_meta_nomes = ['Mes_Referencia', 'Data_Email', 'Remetente', 'Assunto_Email', 
+                       'Categoria_OPEX', 'Data_Processamento', 'Chave_Negocio_Temp']
+
+    # 1. Formata o Cabeçalho (Linha 1)
+    for cell in ws[1]:
+        col_name = str(cell.value)
+        cell.font = font_branca
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Se o nome da coluna estiver na lista de metadados, pinta de Azul
+        if col_name in cols_meta_nomes:
+            cell.fill = fill_meta
+        else:
+            # Caso contrário (dado extraído da tabela original), pinta de Laranja
+            cell.fill = fill_dados
+
+    # 2. Ajuste de Largura das Colunas
+    for i in range(1, max_col + 1):
+        col_letter = get_column_letter(i)
+        ws.column_dimensions[col_letter].width = 20
+
+    # 3. Criação/Correção da Tabela Oficial
+    nome_tabela_limpo = f"TB_{sheet_name.replace(' ', '_')}"
+    ref_tabela = f"A1:{letra_ultima_coluna}{max_row}"
+    
+    # Verifica se a tabela já existe na planilha
+    tabela_existente = None
+    if ws.tables:
+        for tbl in ws.tables.values():
+            if tbl.name == nome_tabela_limpo:
+                tabela_existente = tbl
+                break
+    
+    if tabela_existente:
+        # Se existe, APENAS atualiza o range (não recria)
+        tabela_existente.ref = ref_tabela
+    else:
+        # Se não existe, cria do zero
+        tabela = Table(displayName=nome_tabela_limpo, ref=ref_tabela)
+        # Estilo 'TableStyleLight1' deixa as linhas de dados brancas/limpas
+        estilo = TableStyleInfo(name="TableStyleLight1", showFirstColumn=False, showLastColumn=False, showRowStripes=False, showColumnStripes=False)
+        tabela.tableStyleInfo = estilo
+        ws.add_table(tabela)
+
+
+def extrair_tabelas_de_pdf(caminho_pdf):
+    """
+    Tenta extrair tabelas de um PDF usando múltiplas estratégias (Linhas e Fluxo).
+    Versão robusta para lidar com diferentes formatos de PDF.
+    """
+    lista_dfs = []
+    try:
+        with pdfplumber.open(caminho_pdf) as pdf:
+            for page in pdf.pages:
+                # TENTATIVA 1: Lattice (Tabelas com bordas/linhas explícitas)
+                tabelas = page.extract_tables({"vertical_strategy": "lines", "horizontal_strategy": "lines"})
+                
+                # TENTATIVA 2: Stream (Tabelas baseadas em espaçamento de texto - comum em notas fiscais)
+                if not tabelas:
+                    tabelas = page.extract_tables({"vertical_strategy": "text", "horizontal_strategy": "text"})
+                
+                # TENTATIVA 3: Padrão (Deixa o pdfplumber tentar adivinhar)
+                if not tabelas:
+                    tabelas = page.extract_tables()
+
+                for tabela in tabelas:
+                    # Limpeza: Remove linhas que estão totalmente vazias ou só contêm None/espaços
+                    tabela_limpa = [
+                        [str(celula).replace('\n', ' ').strip() if celula is not None else '' for celula in linha]
+                        for linha in tabela
+                        if any(celula is not None and str(celula).strip() != "" for celula in linha)
+                    ]
+                    
+                    # Precisa ter pelo menos cabeçalho + 1 linha de dados
+                    if len(tabela_limpa) > 1:
+                        # Cria DataFrame assumindo que a 1ª linha é o cabeçalho
+                        # (O tratamento de cabeçalho errado será feito depois na 'encontrar_cabecalho_correto')
+                        df = pd.DataFrame(tabela_limpa[1:], columns=tabela_limpa[0])
+                        lista_dfs.append(df)
+                        
+    except Exception as e:
+        logging.error(f"Erro ao ler PDF {caminho_pdf}: {e}")
+        print(f"   [ERRO PDF] Falha na leitura: {e}")
+        
+    return lista_dfs
 
 def is_file_open(path):
     if not path.exists(): return False
@@ -182,37 +314,34 @@ def limpar_valor_monetario(valor):
 
 def encontrar_cabecalho_correto(df, colunas_esperadas):
     """
-    Tenta encontrar o cabeçalho real nas 3 primeiras linhas do DataFrame.
+    Procura a linha de cabeçalho real, tolerando a sujeira comum em PDFs.
     """
-    if not colunas_esperadas:
-        # Fallback Positivo: procura tabela útil
-        termos_validos = ['valor', 'total', 'liquido', 'bruto', 'vlr', 'data', 'emissao', 'nota', 'nf']
-        
-        cols_atuais = [str(c).lower() for c in df.columns]
-        if any(t in c for c in cols_atuais for t in termos_validos):
-            return df
-            
-        for i in range(min(3, len(df))):
-            nova_header = df.iloc[i]
-            str_header = [str(x).lower() for x in nova_header]
-            if any(t in c for c in str_header for t in termos_validos):
-                df_novo = df[i+1:].copy()
-                df_novo.columns = nova_header
-                return df_novo
-        
-        return None
+    # Termos-chave que indicam fortemente uma tabela financeira
+    termos_validos = ['valor', 'total', 'liquido', 'bruto', 'vlr', 'data', 'emissao', 'nota', 'nf', 'r$', 'montante', 'descrição', 'historico']
+    
+    # Função interna para verificar se uma lista de colunas (linha) parece ser um cabeçalho válido
+    def eh_cabecalho_valido(lista_colunas):
+        cols_str = [str(c).lower().strip() for c in lista_colunas]
+        # Retorna True se encontrar pelo menos UM dos termos válidos na linha
+        return any(t in c for c in cols_str for t in termos_validos)
 
-    # Lógica normal
-    cols_esperadas_norm = [c.lower().replace('.', '').replace(' ', '').strip() for c in colunas_esperadas]
-    cols_atuais = [str(c).lower().replace('.', '').replace(' ', '').strip() for c in df.columns]
-    if any(col in cols_atuais for col in cols_esperadas_norm): return df
-    for i in range(min(3, len(df))):
-        nova_header = df.iloc[i]
-        df_novo = df[i+1:].copy()
-        df_novo.columns = nova_header
-        cols_teste = [str(c).lower().replace('.', '').replace(' ', '').strip() for c in df_novo.columns]
-        if any(col in cols_teste for col in cols_esperadas_norm):
+    # 1. Tenta o cabeçalho atual do DataFrame
+    if eh_cabecalho_valido(df.columns):
+        return df
+
+    # 2. Varre as primeiras 15 linhas (PDFs costumam ter cabeçalhos grandes, logotipos ou textos introdutórios antes da tabela real)
+    for i in range(min(15, len(df))):
+        linha = df.iloc[i]
+        
+        if eh_cabecalho_valido(linha):
+            # Promove esta linha a cabeçalho
+            df_novo = df[i+1:].copy() # Pega os dados abaixo da linha encontrada
+            df_novo.columns = [str(x).replace('\n', ' ').strip() for x in linha] # Define a linha como novo cabeçalho
+            
+            # Reset do index para manter a integridade
+            df_novo.reset_index(drop=True, inplace=True)
             return df_novo
+            
     return None
 
 def tratar_dataframe(df, config, metadados):
@@ -251,145 +380,99 @@ def tratar_dataframe(df, config, metadados):
 def salvar_com_append_preservando_formatacao(df_novos, caminho_arquivo, nome_aba):
     if df_novos.empty: return
 
-    # --- ARQUIVO NOVO ---
+    # Remove a coluna temporária do DataFrame antes de salvar (para não ir pro Excel)
+    df_dados = df_novos.copy()
+    if 'Chave_Negocio_Temp' in df_dados.columns:
+        df_dados = df_dados.drop(columns=['Chave_Negocio_Temp'])
+
+    # --- CENÁRIO 1: ARQUIVO NOVO ---
     if not caminho_arquivo.exists():
-        if 'Chave_Negocio_Temp' in df_novos.columns:
-            df_novos = df_novos.drop(columns=['Chave_Negocio_Temp'])
-        
         with pd.ExcelWriter(caminho_arquivo, engine='openpyxl') as writer:
-            df_novos.to_excel(writer, sheet_name=nome_aba, index=False)
-            aplicar_estilo_inicial(writer.sheets[nome_aba], nome_aba)
+            df_dados.to_excel(writer, sheet_name=nome_aba, index=False)
+            # Aplica o estilo na aba recém-criada
+            aplicar_estilo_visual(writer.sheets[nome_aba], nome_aba)
         return
 
     try:
-        # --- ARQUIVO EXISTENTE ---
-        wb_check = load_workbook(caminho_arquivo, read_only=True)
-        aba_existe = nome_aba in wb_check.sheetnames
-        wb_check.close()
-
-        # Cria aba se não existir
-        if not aba_existe:
-            if 'Chave_Negocio_Temp' in df_novos.columns:
-                df_novos = df_novos.drop(columns=['Chave_Negocio_Temp'])
-            
-            with pd.ExcelWriter(caminho_arquivo, engine='openpyxl', mode='a') as writer:
-                df_novos.to_excel(writer, sheet_name=nome_aba, index=False)
-                aplicar_estilo_inicial(writer.sheets[nome_aba], nome_aba)
-            return
-
-        # Deduplicação
-        df_existente = pd.read_excel(caminho_arquivo, sheet_name=nome_aba)
-        colunas_no_excel = list(df_existente.columns)
-        
-        try:
-            col_desc_ex = next((c for c in df_existente.columns if 'Descricao' in str(c) or 'Linha' in str(c)), df_existente.columns[1])
-            
-            # Busca chave de valor de forma inteligente
-            col_val_ex = df_existente.columns[2]
-            for c in df_existente.columns:
-                if eh_coluna_financeira(c):
-                    col_val_ex = c
-                    break
-            
-            if 'Data_Email' in df_existente.columns:
-                anos = pd.to_datetime(df_existente['Data_Email']).dt.year.astype(str)
-            else:
-                anos = str(datetime.now().year)
-
-            chaves_existentes = set(
-                df_existente['Mes_Referencia'].astype(str) + anos + "_" + 
-                df_existente[col_desc_ex].astype(str) + "_" + 
-                df_existente[col_val_ex].astype(str)
-            )
-        except:
-            chaves_existentes = set()
-
-        df_para_salvar = df_novos[~df_novos['Chave_Negocio_Temp'].isin(chaves_existentes)]
-        
-        if df_para_salvar.empty:
-            logging.info(f"[{nome_aba}] Dados já existem. Nada a salvar.")
-            return
-
-        df_para_salvar = df_para_salvar.drop(columns=['Chave_Negocio_Temp'])
-
-        # Alinhamento de colunas
-        for col in colunas_no_excel:
-            if col not in df_para_salvar.columns:
-                df_para_salvar[col] = "" 
-        
-        df_para_salvar = df_para_salvar[colunas_no_excel]
-
-        # --- GRAVAÇÃO COM FORMATAÇÃO ---
+        # Carrega o workbook existente
         wb = load_workbook(caminho_arquivo)
+        
+        # --- CENÁRIO 2: ABA NOVA ---
+        if nome_aba not in wb.sheetnames:
+            ws = wb.create_sheet(nome_aba)
+            # Escreve cabeçalho
+            ws.append(list(df_dados.columns))
+            # Escreve dados
+            for r in dataframe_to_rows(df_dados, index=False, header=False):
+                ws.append(r)
+            
+            aplicar_estilo_visual(ws, nome_aba)
+            wb.save(caminho_arquivo)
+            return
+
+        # --- CENÁRIO 3: APPEND EM ABA EXISTENTE ---
         ws = wb[nome_aba]
         
-        # Mapeia quais índices são colunas financeiras (Baseado no cabeçalho do Excel)
-        indices_financeiros = []
-        for idx, col_name in enumerate(colunas_no_excel, start=1):
-            if eh_coluna_financeira(col_name):
-                indices_financeiros.append(idx)
+        # Lê cabeçalho existente para garantir a ordem das colunas
+        headers_excel = [cell.value for cell in ws[1]]
+        
+        # Alinha as colunas do DF com as do Excel
+        for col in headers_excel:
+            if col not in df_dados.columns:
+                df_dados[col] = "" # Cria coluna vazia se faltar
+        
+        # Reordena o DF para bater com o Excel
+        df_dados = df_dados[headers_excel]
 
-        for r in dataframe_to_rows(df_para_salvar, index=False, header=False):
+        # Escreve apenas as linhas novas
+        for r in dataframe_to_rows(df_dados, index=False, header=False):
             ws.append(r)
-            current_row = ws.max_row
-            
-            # Formatação Linha a Linha
-            for col_idx, cell in enumerate(ws[current_row], start=1):
-                cell.border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                
-                # APLICA FORMATAÇÃO VISUAL SE FOR COLUNA FINANCEIRA E VALOR NUMÉRICO
-                if col_idx in indices_financeiros and isinstance(cell.value, (int, float)):
-                     cell.number_format = '_-R$ * #,##0.00_-;-R$ * #,##0.00_-;_-R$ * "-"??_-;_-@_-'
-
-        # Atualiza Tabela
-        nome_tabela_limpo = f"TB_{nome_aba.replace(' ', '_')}"
-        if nome_tabela_limpo in ws.tables:
-            tbl = ws.tables[nome_tabela_limpo]
-            nova_ref = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
-            tbl.ref = nova_ref
-
+        
+        # --- PASSO CRUCIAL PARA NÃO CORROMPER ---
+        # Chama a função de estilo para atualizar o range da tabela existente
+        aplicar_estilo_visual(ws, nome_aba)
+        
         wb.save(caminho_arquivo)
-        logging.info(f"[{nome_aba}] {len(df_para_salvar)} linhas anexadas com sucesso.")
+        print(f"   -> Dados salvos em '{nome_aba}' com sucesso.")
 
     except Exception as e:
-        logging.error(f"Erro ao anexar na aba {nome_aba}: {e}")
+        logging.error(f"Erro ao salvar em {nome_aba}: {e}")
+        print(f"   -> ERRO AO SALVAR EXCEL: {e}")
 
 def aplicar_estilo_inicial(ws, sheet_name):
+    """
+    Aplica estilo e CRIA a tabela oficial pela primeira vez nas abas de dados.
+    """
     max_col = ws.max_column
     letra_ultima_coluna = get_column_letter(max_col)
+    max_row = ws.max_row
     
+    # Estilo do Cabeçalho
     fill_azul = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
-    fill_destaque = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
-    header_font = Font(name="Calibri", size=11, color="FFFFFF", bold=True)
+    font_branca = Font(name="Calibri", size=11, color="FFFFFF", bold=True)
     
-    # Identifica financeiros
-    indices_financeiros = []
-
-    for idx, cell in enumerate(ws[1], start=1):
-        col_name = str(cell.value)
-        
-        if eh_coluna_financeira(col_name):
-            indices_financeiros.append(idx)
-
-        if col_name in COLUNAS_PADRAO:
-            cell.fill = fill_destaque
-        else:
-            cell.fill = fill_azul
-        cell.font = header_font
+    for cell in ws[1]:
+        cell.fill = fill_azul
+        cell.font = font_branca
         cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    # Aplica nas linhas iniciais (se houver dados)
-    for row in ws.iter_rows(min_row=2, max_col=max_col):
-        for col_idx, cell in enumerate(row, start=1):
-            if col_idx in indices_financeiros and isinstance(cell.value, (int, float)):
-                cell.number_format = '_-R$ * #,##0.00_-;-R$ * #,##0.00_-;_-R$ * "-"??_-;_-@_-'
-
-    ref_tabela = f"A1:{letra_ultima_coluna}{ws.max_row}"
-    nome_tabela_limpo = f"TB_{sheet_name.replace(' ', '_')}"
-    tabela = Table(displayName=nome_tabela_limpo, ref=ref_tabela)
-    estilo = TableStyleInfo(name="TableStyleLight1", showFirstColumn=False, showLastColumn=False, showRowStripes=False, showColumnStripes=False)
+        
+    # Ajuste de Colunas
+    ws.column_dimensions['A'].width = 15 # Mes
+    ws.column_dimensions['B'].width = 18 # Data
+    ws.column_dimensions['C'].width = 25 # Remetente
+    ws.column_dimensions['D'].width = 35 # Assunto
+    
+    # Criação da Tabela Oficial
+    nome_tabela = f"TB_{sheet_name.replace(' ', '_')}"
+    ref_tabela = f"A1:{letra_ultima_coluna}{max_row}"
+    
+    tabela = Table(displayName=nome_tabela, ref=ref_tabela)
+    estilo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
     tabela.tableStyleInfo = estilo
-    ws.add_table(tabela)
+    
+    # Só adiciona se não existir
+    if nome_tabela not in ws.tables:
+        ws.add_table(tabela)
 
 # --- PROCESSO PRINCIPAL ---
 
@@ -427,15 +510,13 @@ def realizar_backup_seguranca():
 
 def inicializar_aba_config():
     """
-    Verifica se a aba 'config_fornecedor' existe. 
-    Se não existir, cria ela, coloca o cabeçalho e os dados padrão.
+    Cria a aba 'config_fornecedor' com Tabela Oficial TB_ConfigFornecedor.
     """
     try:
         wb = None
         salvar_necessario = False
-        NOME_ABA_CONFIG = "config_fornecedor" # <--- MUDAMOS O NOME AQUI
+        NOME_ABA_CONFIG = "config_fornecedor"
 
-        # 1. Abre ou Cria o Arquivo
         if not ARQUIVO_FINAL.exists():
             print(f"--- CRIANDO ARQUIVO NOVO EM: {ARQUIVO_FINAL} ---")
             wb = Workbook() 
@@ -444,17 +525,13 @@ def inicializar_aba_config():
         else:
             wb = load_workbook(ARQUIVO_FINAL)
 
-        # 2. Verifica/Cria a aba específica
         if NOME_ABA_CONFIG not in wb.sheetnames:
             print(f"Criando aba '{NOME_ABA_CONFIG}'...")
-            ws = wb.create_sheet(NOME_ABA_CONFIG, 0) # Cria na primeira posição
+            ws = wb.create_sheet(NOME_ABA_CONFIG, 0)
 
-            # --- ESCREVE O CABEÇALHO ---
-            cabecalho = ["Fornecedor", "Palavras_Chave", "Nome_Aba", "Categoria_OPEX"]
+            cabecalho = ["Fornecedor", "Palavras_Chave", "Nome_Aba", "Categoria_OPEX", "Tipo_leitura"]
             ws.append(cabecalho)
 
-            # --- PREENCHE DADOS PADRÃO ---
-            # Garante que CONFIG_PADRAO seja tratado como lista
             dados = CONFIG_PADRAO
             if isinstance(CONFIG_PADRAO, dict): dados = list(CONFIG_PADRAO.values())
 
@@ -464,46 +541,70 @@ def inicializar_aba_config():
                         item.get("Fornecedor", ""),
                         item.get("Palavras_Chave", ""),
                         item.get("Nome_Aba", ""),
-                        item.get("Categoria_OPEX", "")
+                        item.get("Categoria_OPEX", ""),
+                        item.get("Tipo_leitura", "Corpo")
                     ])
 
-            # --- FORMATAÇÃO (Para não confundir o usuário) ---
-            # Pinta o cabeçalho de Preto com letra Branca
-            for cell in ws[1]:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill(start_color="000000", end_color="000000", fill_type="solid")
-                cell.alignment = Alignment(horizontal='center')
+            # --- ESTILO ---
+            # Formata APENAS o cabeçalho
+            fill_header = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") # Azul Escuro
+            font_header = Font(bold=True, color="FFFFFF")
             
-            # Ajusta largura das colunas para ficar legível
-            ws.column_dimensions['A'].width = 15 # Fornecedor
-            ws.column_dimensions['B'].width = 40 # Palavras Chave
-            ws.column_dimensions['C'].width = 15 # Nome Aba
-            ws.column_dimensions['D'].width = 25 # Categoria
+            for cell in ws[1]:
+                cell.fill = fill_header
+                cell.font = font_header
+                cell.alignment = Alignment(horizontal='center')
+
+            # Ajuste de largura
+            ws.column_dimensions['A'].width = 15
+            ws.column_dimensions['B'].width = 40
+            ws.column_dimensions['C'].width = 15
+            ws.column_dimensions['D'].width = 25
+            ws.column_dimensions['E'].width = 15
+
+            # --- CRIAÇÃO DA TABELA OFICIAL ---
+            nome_tabela = "TB_ConfigFornecedor"
+            ref_tabela = f"A1:E{ws.max_row}"
+            tabela = Table(displayName=nome_tabela, ref=ref_tabela)
+            
+            # Estilo 'TableStyleLight8' ou 'None' é bem limpo (fundo branco, cabeçalho sutil)
+            # Se quiser algo padrão do Excel, use 'TableStyleMedium2'
+            estilo = TableStyleInfo(name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False, showRowStripes=False, showColumnStripes=False)
+            tabela.tableStyleInfo = estilo
+            ws.add_table(tabela)
+
+            # --- LISTA SUSPENSA ---
+            dv = DataValidation(type="list", formula1='"Corpo,PDF,Ambos"', allow_blank=True)
+            ws.add_data_validation(dv)
+            dv.add(f'E2:E{ws.max_row + 50}') 
             
             salvar_necessario = True
 
         if salvar_necessario:
             wb.save(ARQUIVO_FINAL)
-            print(f" -> ARQUIVO SALVO COM ABA '{NOME_ABA_CONFIG}'.")
+            print(f" -> Configuração salva com sucesso.")
         
         wb.close()
         
     except Exception as e:
         if "Permission denied" in str(e):
-            print("ERRO CRÍTICO: O Excel está aberto. Feche-o para criar a configuração.")
-        logging.error(f"Erro ao inicializar aba config: {e}")
+            print("ERRO CRÍTICO: O Excel está aberto. Feche-o.")
+        logging.error(f"Erro ao inicializar config: {e}")
 
 def carregar_configuracoes_do_excel():
-    """Lê a aba 'config_fornecedor' e transforma no dicionário."""
-    
+    """
+    Lê a aba 'config_fornecedor' e transforma no dicionário.
+    Agora lê também a coluna 'Tipo_leitura'.
+    """
     inicializar_aba_config()
     
     config_dict = {} 
-    NOME_ABA_CONFIG = "config_fornecedor" # <--- MUDAMOS O NOME AQUI TAMBÉM
+    NOME_ABA_CONFIG = "config_fornecedor"
 
     try:
         if not ARQUIVO_FINAL.exists():
-             raise Exception("Arquivo não encontrado.")
+             # Se der erro de arquivo inexistente, usa memória
+             raise Exception("Arquivo não encontrado para leitura.")
 
         # Lê a aba correta
         df_config = pd.read_excel(ARQUIVO_FINAL, sheet_name=NOME_ABA_CONFIG)
@@ -516,10 +617,20 @@ def carregar_configuracoes_do_excel():
             palavras = str(row["Palavras_Chave"]).split(',')
             palavras_limpas = [p.strip() for p in palavras if p.strip()]
             
+            # --- NOVO: LÊ O TIPO DE LEITURA ---
+            # Padronizamos para minúsculo para facilitar a comparação (corpo, pdf, ambos)
+            tipo_leitura = str(row.get("Tipo_leitura", "corpo")).strip().lower()
+            
+            # Validação simples
+            if tipo_leitura not in ['corpo', 'pdf', 'ambos']:
+                tipo_leitura = 'corpo'
+            # ----------------------------------
+
             config_dict[fornecedor] = {
                 "assuntos_possiveis": palavras_limpas,
                 "nome_aba": str(row["Nome_Aba"]),
                 "classificacao_opex": str(row["Categoria_OPEX"]),
+                "tipo_leitura": tipo_leitura, # Guardamos na config
                 "colunas_renomear": {}
             }
         
@@ -530,7 +641,7 @@ def carregar_configuracoes_do_excel():
         logging.error(f"Erro lendo Excel ({e}). Usando padrão de memória.")
         print(f"Aviso: Usando padrão de memória (Erro: {e})")
         
-        # Fallback
+        # Fallback memória
         fallback_dict = {}
         dados = CONFIG_PADRAO
         if isinstance(CONFIG_PADRAO, dict): dados = list(CONFIG_PADRAO.values())
@@ -541,6 +652,7 @@ def carregar_configuracoes_do_excel():
                     "assuntos_possiveis": item["Palavras_Chave"].split(','),
                     "nome_aba": item["Nome_Aba"],
                     "classificacao_opex": item["Categoria_OPEX"],
+                    "tipo_leitura": item.get("Tipo_leitura", "corpo").lower(),
                     "colunas_renomear": {}
                 }
         return fallback_dict
@@ -627,21 +739,22 @@ def enviar_email_resumo(resumo_dados):
         print(f"Erro ao gerar e-mail de resumo: {e}")
         logging.error(f"Erro no e-mail: {e}")
 
-def executar_pipeline():
-    print("\n--- INICIANDO PROCESSAMENTO OPEX ---")
-    logging.info("--- Iniciando Processamento ---")
 
+
+def executar_pipeline():
+    print("\n--- INICIANDO PROCESSAMENTO (CORRIGIDO E OTIMIZADO) ---")
+    
     if is_file_open(ARQUIVO_FINAL):
-        logging.critical(f"O arquivo {ARQUIVO_FINAL} está ABERTO. Feche-o.")
         print("ERRO CRÍTICO: O arquivo Excel está aberto. Por favor, feche-o.")
         return
     
-    print("\n--- INICIANDO BACKUP DE SEGURANÇA ---")
     realizar_backup_seguranca()
+    
+    # Cria pasta temporária para PDFs
+    PASTA_TEMP_PDF = CAMINHO_PASTA_LOCAL / "Temp_PDF"
+    if not PASTA_TEMP_PDF.exists(): PASTA_TEMP_PDF.mkdir()
 
-    # --- Variável para guardar os dados do resumo ---
     stats_geral = {} 
-    # -----------------------------------------------------
 
     try:
         outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
@@ -651,29 +764,14 @@ def executar_pipeline():
         print(" -> Carregando configurações...")
         config_atual = carregar_configuracoes_do_excel()
 
-        # Proteção extra caso venha como lista
-        if isinstance(config_atual, list):
-            logging.warning("Configuração veio como lista. Convertendo...")
-            novo_dict = {}
-            for item in config_atual:
-                if isinstance(item, dict) and "Fornecedor" in item: 
-                     palavras = item.get("Palavras_Chave", "")
-                     lista_palavras = palavras.split(',') if isinstance(palavras, str) else []
-                     novo_dict[item["Fornecedor"]] = {
-                        "assuntos_possiveis": lista_palavras,
-                        "nome_aba": item.get("Nome_Aba", ""),
-                        "classificacao_opex": item.get("Categoria_OPEX", ""),
-                        "colunas_renomear": {}
-                      }
-            config_atual = novo_dict
-
         if not config_atual:
             print("ERRO: Nenhuma configuração carregada.")
             return
 
         for fornecedor, config in config_atual.items():
-            print(f"\nVerificando fornecedor: {fornecedor}")
-            logging.info(f"Verificando e-mails de: {fornecedor}")
+            modo_leitura = config.get('tipo_leitura', 'corpo').upper()
+            print(f"\nVerificando: {fornecedor} (Modo: {modo_leitura})")
+            
             mensagens = inbox.Items
             mensagens.Sort("[ReceivedTime]", True)
             assuntos_alvo = [a.lower() for a in config.get("assuntos_possiveis", [])]
@@ -690,41 +788,76 @@ def executar_pipeline():
                     if not any(alvo in assunto_msg for alvo in assuntos_alvo): continue 
                     
                     remetente_email = obter_email_remetente(msg)
-                    # --- ATENÇÃO: COMENTE A LINHA ABAIXO PARA TESTAR COM SEU E-MAIL ---
-                    # if remetente_email in REMETENTES_IGNORAR: 
-                    #     print(f" -> Ignorado: Remetente bloqueado ({remetente_email})")
-                    #     continue
-                    # ------------------------------------------------------------------
+                    
+                    # --- BLOQUEIO DE REMETENTE ---
+                    if remetente_email in REMETENTES_IGNORAR: 
+                        print(f" -> Ignorado: Remetente bloqueado ({remetente_email})")
+                        continue
+                    # -----------------------------
 
                     print(f" -> PROCESSANDO: {msg.Subject}")
-                    logging.info(f"Processando e-mail: {msg.Subject}")
-                    html = msg.HTMLBody
-                    todas_tabelas = pd.read_html(StringIO(html), header=0)
-                    if not todas_tabelas:
-                        todas_tabelas = pd.read_html(StringIO(html), header=None)
-                        if not todas_tabelas: continue
+                    tabelas_encontradas = []
+                    tipo_leitura = config.get('tipo_leitura', 'corpo')
 
+                    # 1. TENTA LER HTML (CORPO)
+                    if tipo_leitura in ['corpo', 'ambos']:
+                        try:
+                            # Tenta ler com lxml (melhor parser), fallback para bs4 se necessário
+                            html_tables = pd.read_html(StringIO(msg.HTMLBody), header=0, flavor=['lxml', 'bs4'])
+                            tabelas_encontradas.extend(html_tables)
+                        except: 
+                            # Tenta sem header se falhar
+                            try:
+                                html_tables = pd.read_html(StringIO(msg.HTMLBody), header=None, flavor=['lxml', 'bs4'])
+                                tabelas_encontradas.extend(html_tables)
+                            except: pass
+                    
+                    # 2. TENTA LER PDF (ANEXO)
+                    if tipo_leitura in ['pdf', 'ambos']:
+                        for att in msg.Attachments:
+                            if att.FileName.lower().endswith('.pdf'):
+                                caminho_temp = PASTA_TEMP_PDF / att.FileName
+                                try:
+                                    att.SaveAsFile(str(caminho_temp))
+                                    print(f"    Anexo baixado: {att.FileName}")
+                                    tabelas_pdf = extrair_tabelas_de_pdf(caminho_temp) # Usa a versão robusta
+                                    tabelas_encontradas.extend(tabelas_pdf)
+                                except Exception as e_pdf:
+                                    logging.error(f"Erro PDF: {e_pdf}")
+                                finally:
+                                    if caminho_temp.exists(): os.remove(caminho_temp)
+
+                    if not tabelas_encontradas:
+                        logging.warning("Nenhuma tabela encontrada.")
+                        print("    [AVISO] Nenhuma tabela encontrada (HTML ou PDF).")
+                        continue
+
+                    # --- LÓGICA DE SELEÇÃO DA MELHOR TABELA ---
                     tabela_alvo = None
                     colunas_esperadas = list(config['colunas_renomear'].keys())
-                    for tb in todas_tabelas:
+                    
+                    # Tenta achar a tabela certa na lista de tabelas encontradas (usando a função melhorada)
+                    for tb in tabelas_encontradas:
                         tb_ajustada = encontrar_cabecalho_correto(tb, colunas_esperadas)
                         if tb_ajustada is not None:
                             tabela_alvo = tb_ajustada
                             break
                     
-                    if tabela_alvo is None and fornecedor == "Positivo":
-                        for tb in todas_tabelas:
-                            if len(tb.columns) > 1:
-                                cols_texto = [str(c).lower() for c in tb.columns]
-                                if any(termo in col for col in cols_texto for termo in ['valor', 'total', 'liq', 'bruto', 'r$']):
-                                    tabela_alvo = tb
-                                    logging.info("Tabela financeira encontrada (Fallback Positivo).")
-                                    break
+                    # Fallback Genérico: Se não achou pelo cabeçalho, pega qualquer uma que tenha termos financeiros
+                    if tabela_alvo is None:
+                        for tb in tabelas_encontradas:
+                            cols_texto = [str(c).lower() for c in tb.columns]
+                            if any(t in c for c in cols_texto for t in ['valor', 'total', 'r$', 'liquido', 'bruto']):
+                                tabela_alvo = tb
+                                print("    [INFO] Tabela identificada por termos financeiros (Fallback).")
+                                break
 
                     if tabela_alvo is None:
-                        logging.warning(f"Tabela correta não encontrada em: {msg.Subject}.")
+                        logging.warning(f"Estrutura irreconhecível em: {msg.Subject}")
+                        print("    [AVISO] Tabelas encontradas, mas nenhuma com estrutura válida.")
                         continue
                     
+                    # Extração de Dados Finais
                     mes_pt, mes_num, ano_full = extrair_data_da_tabela(tabela_alvo)
                     if not mes_pt: mes_pt, mes_num, ano_full = extrair_info_data_inteligente(msg.Subject, msg.Body)
                     
@@ -737,35 +870,37 @@ def executar_pipeline():
                     }
 
                     df_tratado = tratar_dataframe(tabela_alvo, config, metadados)
-                    dfs_novos.append(df_tratado)
                     
-                    pasta_ano = f"Processados_OPEX {ano_full}"
-                    pasta_mes = f"{mes_num} - {mes_pt}" if mes_pt else "00 - A Classificar"
-                    msgs_para_mover_com_destino.append((msg, pasta_ano, pasta_mes, fornecedor))
+                    # Verificação final antes de adicionar
+                    if not df_tratado.empty:
+                        dfs_novos.append(df_tratado)
+                        pasta_ano = f"Processados_OPEX {ano_full}"
+                        pasta_mes = f"{mes_num} - {mes_pt}" if mes_pt else "00 - A Classificar"
+                        msgs_para_mover_com_destino.append((msg, pasta_ano, pasta_mes, fornecedor))
+                        print(f"    [SUCESSO] {len(df_tratado)} linhas extraídas.")
+                    else:
+                        print("    [AVISO] Tabela encontrada mas vazia após tratamento.")
 
                 except Exception as e:
-                    logging.error(f"Erro no loop de msg: {e}")
+                    logging.error(f"Erro msg: {e}")
                     continue
             
             if dfs_novos:
                 full_new_data = pd.concat(dfs_novos)
                 salvar_com_append_preservando_formatacao(full_new_data, ARQUIVO_FINAL, config['nome_aba'])
                 
-                # --- COLETA DADOS PARA O E-MAIL ---
+                # Coleta Stats para o e-mail
                 qtd = len(dfs_novos)
                 soma_valor = 0.0
                 for col in full_new_data.columns:
                     if eh_coluna_financeira(col):
                         soma_valor = full_new_data[col].sum()
                         break
-                
                 stats_geral[fornecedor] = {'qtd': qtd, 'valor': soma_valor}
-                # ----------------------------------------
             else:
                 logging.info(f"Nenhum dado novo para {fornecedor}.")
 
         print("\nMovendo e-mails processados...")
-
         for msg, pasta_ano_nome, pasta_mes_nome, pasta_fornecedor_nome in msgs_para_mover_com_destino:
             try:
                 msg.UnRead = False 
@@ -776,17 +911,17 @@ def executar_pipeline():
                 try: pasta_final = pasta_mes.Folders(pasta_fornecedor_nome)
                 except: pasta_final = pasta_mes.Folders.Add(pasta_fornecedor_nome)
                 msg.Move(pasta_final)
-            except Exception as e: logging.error(f"Erro ao mover email: {e}")
+            except: pass
         
-        # --- DISPARA O E-MAIL NO FINAL ---
+        # Envio de E-mail (Agora envia direto, sem .Display)
         print("\nGerando relatório e enviando e-mail...")
         enviar_email_resumo(stats_geral)
-        # ---------------------------------------
-
+        
+        if PASTA_TEMP_PDF.exists(): shutil.rmtree(PASTA_TEMP_PDF)
         print("\n--- PROCESSO CONCLUÍDO COM SUCESSO ---")
 
     except Exception as e:
-        logging.critical(f"Falha critica na execução: {e}")
+        logging.critical(f"Falha critica: {e}")
         print(f"Erro Crítico: {e}")
 
 if __name__ == "__main__":
